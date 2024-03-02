@@ -1,0 +1,200 @@
+
+//////////////////////////// Jenkins Server ///////////////////////////////////////////////
+
+install java in ubuntu linux
+===========================================
+
+sudo apt update
+sudo apt install fontconfig openjdk-17-jre
+java -version
+openjdk version "17.0.8" 2023-07-18
+OpenJDK Runtime Environment (build 17.0.8+7-Debian-1deb12u1)
+OpenJDK 64-Bit Server VM (build 17.0.8+7-Debian-1deb12u1, mixed mode, sharing)
+
+
+install jenkins on ubuntu linux
+===========================================================
+
+sudo wget -O /usr/share/keyrings/jenkins-keyring.asc \
+  https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
+  https://pkg.jenkins.io/debian-stable binary/ | sudo tee \
+  /etc/apt/sources.list.d/jenkins.list > /dev/null
+sudo apt-get update
+sudo apt-get install jenkins
+
+enable the Jenkins service
+=======================================
+
+sudo systemctl enable jenkins
+
+start the Jenkins service
+==============================
+sudo systemctl start jenkins
+
+check the status of the Jenkins service
+==================================
+sudo systemctl status jenkins
+
+if running correctly --->
+
+ubuntu@ip-172-31-1-64:~$ sudo systemctl status jenkins
+● jenkins.service - Jenkins Continuous Integration Server
+     Loaded: loaded (/lib/systemd/system/jenkins.service; enabled; vendor preset: enabled)
+     Active: active (running) since Tue 2024-01-09 10:17:15 UTC; 2min 42s ago
+
+
+initialAdminPassword --> /var/lib/jenkins/secrets/initialAdminPassword
+
+ca8fc08a7bbf43c1be7e6f945537139c
+
+0289b7d75d534c83b4e77ad6a16ab73e
+
+install docker in ubuntu
+===============================
+
+sudo apt install docker.io -y
+
+add jenkis user to docker
+===================================
+
+here the Jenkins user is 'jenkins'
+
+we can fin that from this command ->
+systemctl cat jenkins.service | grep User=
+
+/lib/systemd/system/jenkins.service ----> jenkins.service 
+
+
+can add that user to docker
+
+sudo usermod -aG docker jenkins
+
+when we grep the docker group
+
+grep '^docker' /etc/group
+
+we can found that the jenkis user is in the docker group as well
+
+** this step is very important beacuse the jenkins user should have permission to execute docke commands
+
+
+Restart Jenkins
+=========================================
+
+sudo systemctl restart jenkins
+
+
+////////////////////////// Deployment Server //////////////////////////////////////
+
+Install docker
+==============================
+
+sudo apt install docker.io -y
+
+In here we have to use sudo privilages to execute docker commands
+
+So will add the ubuntu user to the docker group
+
+sudo usermod -aG docker ubuntu
+
+sudo systemctl status docker
+sudo systemctl start docker
+
+
+//////////// Configuring Pipeline ///////////////////////////
+
+jenkis url - http://3.106.165.92:8080/
+
+
+http://13.210.165.25:8080/
+
+http://3.27.193.66:8080/
+
+admin user in aws jenkins
+
+username - jenkins-admin
+password - admin123
+
+
+
+docker hub user credentials
+
+username - supun1995
+password - Supun@2022
+
+path - /var/lib/jenkins/workspace/ 
+==============================Pipeline Script========================================
+
+-------------------------------------------------------------------------------------------------------
+
+node{
+	def buildNumber = BUILD_NUMBER
+	stage("Git Clone") {
+		
+		git url: 'https://github.com/supun5687/test-app-jenkins.git' , branch: 'develop'
+	
+	}
+	
+	stage("Maven Clean Package"){
+	    
+	    def mavenHome = tool name: "Maven", type : "maven"
+	    
+	    sh "${mavenHome}/bin/mvn -Dmaven.test.failure.ignore=true clean package"
+	}
+	
+	stage("Build docker Image"){
+	
+		sh "docker build -t supun1995/java-web-app:${buildNumber} ."
+			
+	}
+	
+	stage("Docker Login and Push"){
+		
+		withCredentials([string(credentialsId: 'DockerHubPwd', variable: 'DockerHubPwd')]){
+		
+			sh "docker login -u supun1995 -p ${DockerHubPwd}"
+			
+			}
+		
+		sh "docker push supun1995/java-web-app:${buildNumber}"
+			
+	}
+	stage ("Deploy Application As Docker Container In Deployment Server"){
+	
+		sshagent(["Docker_Dev_Server_SSH"]){
+			sh "ssh -o StrictHostKeyChecking=no ubuntu@172.31.14.187 docker rm -f javawebappcontainer || true"
+			sh "ssh -o StrictHostKeyChecking=no ubuntu@172.31.14.187 docker run -d -p 8080:8080 --name javawebappcontainer supun1995/java-web-app:${buildNumber}"
+		}
+
+	}
+
+}
+
+
+------------------------------------------------------------------------------
+
+
+Deploy on Docker server
+==========================================
+
+Download and install ssh agent plugin in jenkins
+
+Then configure on jenkins pipeline script
+
+stage ("Deploy Application As Docker Container In Deployment Server"){
+	
+	sshagent(["Docker_Dev_Server_SSH"]){
+		sh "ssh -o StrictHostKeyChecking=no ubuntu@172.31.14.187 docker rm -f javawebappcontainer || true"
+		sh "ssh -o StrictHostKeyChecking=no ubuntu@172.31.14.187 docker run -d -p 8080:8080 --name javawebappcontainer supun1995/java-web-app:${buildNumber}"
+	}
+
+}
+
+
+
+test deployment --> curl http://localhost:8080/hello
+
+
+
+
